@@ -16,7 +16,6 @@ import json
 
 import threading
 
-
 import time
 
 
@@ -39,6 +38,7 @@ def get_list_page_url(city):
         page_url_list = list()
 
         for i in range(total_page):
+            #url = start_url + "/pg" + str(i + 1) + "/"
             url = start_url + "/pg" + str(i + 1) + "/"
             page_url_list.append(url)
             #print(url)
@@ -100,7 +100,7 @@ def detail_page_parser(res):
         return None
     headers =  {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Safari/537.36',
-        'Referer': 'https://bj.lianjia.com/ershoufang'
+        'Referer': 'https://sh.lianjia.com/ershoufang'
     }
     for detail_url in detail_urls:
         try:
@@ -156,8 +156,8 @@ def save_data(data,filename):
         f.write(json.dumps(data, indent=2, ensure_ascii=False))
 
 def main():
-    # cq,cs,nj,dl,wh,cc
-    city_list = ['nj']
+    # cq,cs,nj,dl,wh,cc,sh
+    city_list = ['sh']
     for city in city_list:
         page_url_list = get_list_page_url(city)
 
