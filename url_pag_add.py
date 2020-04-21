@@ -2,6 +2,7 @@ from urllib.parse import urlsplit
 from urllib.parse import urljoin
 import os
 
+#按照搜索条件URL的Path最后一级增加pgi
 def url_addpag(detailurl, cot):
     urlsp = urlsplit(detailurl)
     urlsppth = [i for i in urlsp.path.split('/') if i != '']

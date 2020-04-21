@@ -1,12 +1,39 @@
 import requests
 import json
 from pyquery import PyQuery as pq
-#from url_pag_add import url_addpag
-import url_pag_add
+import threading
+from concurrent.futures import ThreadPoolExecutor
+import time
+from urllib.parse import urlsplit
+from urllib.parse import urljoin
+import os
+
+# 按照搜索条件URL的Path最后一级增加pgi
+
+
+def url_addpag(detailurl, cot):
+    urlsp = urlsplit(detailurl)
+    urlsppth = [i for i in urlsp.path.split('/') if i != '']
+    i = 1
+    resulturllst = []
+    while(i <= cot):
+        sp = ''
+        for j in urlsppth:
+            if j == urlsppth[len(urlsppth)-1] and i != 1:
+                # 搜索的Path为最后一个值前面增加 pgi 页码
+                sp = os.path.join(sp, 'pg{}{}'.format(
+                    str(i), urlsppth[len(urlsppth)-1]))
+            else:
+                sp = os.path.join(sp, j)
+        resulturl = urljoin('{0}://{1}'.format(urlsp.scheme, urlsp.netloc), sp)
+        i = i+1
+        resulturllst.append(resulturl)
+    return resulturllst
+
+# 获取搜索结果
 
 
 def get_list_page_url(city, searchv):
-    # start_url = "https://{}.lianjia.com/ershoufang/rs新凯%20长宁".format(city)
     start_url = "https://sh.lianjia.com/ershoufang/rs{}/".format(searchv)
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Safari/537.36',
@@ -20,24 +47,114 @@ def get_list_page_url(city, searchv):
         # 只能访问到前一百页
         if total_page > 100:
             total_page = 100
-        print('URL:'+start_url)
-        page_url_list = url_pag_add.url_addpag(start_url, total_page)
+        print('Start URL:'+start_url)
+        page_url_list = url_addpag(start_url, total_page)
         return page_url_list
-
     except Exception as err:
         print("获取总套数出错,请确认起始URL是否正确")
-        print("error message:" + err)
+        print("error message:{}".format(err))
         return None
     finally:
         pass
 
 
+def get_detail_page_url(page_url):
+    global detail_list
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Safari/537.36',
+        'Referer': 'https://bj.lianjia.com/ershoufang'
+    }
+
+    try:
+        response = requests.get(page_url, headers=headers, timeout=3)
+        doc = pq(response.text)
+        i = 0
+        detail_urls = list()
+        for item in doc(".sellListContent li").items():
+            i += 1
+            if i == 31:
+                break
+            child_item = item(".noresultRecommend")
+            if child_item == None:
+                i -= 1
+            detail_url = child_item.attr("href")
+            detail_urls.append(detail_url)
+        return detail_urls
+    except Exception as ex:
+        print("获取列表页'{}'报错".format(page_url))
+        print('ErrorMessage:{}'.format(ex))
+
+
+lock = threading.Lock()
+
+# 获取详细信息
+
+
+def detail_page_parser(res):
+    global detail_list
+    global runcount
+    global allpage
+    detail_urls = res.result()
+    if not detail_urls:
+        print("detail url 为空")
+        return None
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Safari/537.36',
+        'Referer': 'https://sh.lianjia.com/ershoufang'
+    }
+    for detail_url in detail_urls:
+        try:
+            response = requests.get(url=detail_url, headers=headers, timeout=3)
+            detail_dict = dict()
+            doc = pq(response.text)
+            # 单价
+            unit_price = doc(".unitPriceValue").text()
+            unit_price = unit_price[0:unit_price.index("元")]
+            if len(unit_price) > 0:
+                detail_dict['unit_price'] = unit_price
+                # 标题
+                detail_dict["title"] = doc("h1").text()
+                # 室
+                detail_dict['rome'] = doc('.room .mainInfo').text()
+                # 面积
+                area = doc('.area .mainInfo').text()
+                detail_dict['area'] = area[0:area.index("平")]
+                # 年份
+                buildyear = doc('.area .subInfo').text()
+                detail_dict['buildyear'] = buildyear[0:buildyear.index('年')]
+                # 总价
+                detail_dict['all_price'] = doc('.price .total').text().strip()
+                # 小区
+                detail_dict['community'] = doc(
+                    ".communityName .info").text().strip()
+                # 区域
+                va = doc(".areaName .info a")
+                detail_dict['location'] = '\t'.join(
+                    [va.eq(x).text().strip() for x in range(len(va))])
+                detail_list.append(detail_dict)
+                # URL
+                detail_dict["url"] = detail_url
+        except Exception as ex:
+            print("获取详情页出错,URL:{}".format(detail_url))
+            print('error message:{}'.format(ex))
+            return None
+
+
 def main():
     # cq,cs,nj,dl,wh,cc,sh
     city_list = ['sh']
+    searchvalue_list = ['世纪公园', '花木苑']
     for city in city_list:
-        page_url_list = get_list_page_url(city, '世纪公园')
-        save_data(page_url_list, city)
+        for sev in searchvalue_list:
+            page_url_list = get_list_page_url(city, sev)
+            # 启动线程
+            with ThreadPoolExecutor(30) as p:
+                for page_url in page_url_list:
+                    p.submit(get_detail_page_url, page_url).add_done_callback(
+                        detail_page_parser)
+            # 保存数据
+            save_data(detail_list, city)
+        detail_list.clear()
 
 
 def save_data(data, filename):
@@ -45,10 +162,11 @@ def save_data(data, filename):
         f.write(json.dumps(data, indent=2, ensure_ascii=False))
 
 
+#global p
+detail_list = list()
 if __name__ == '__main__':
-    # old = time.time()
+    old = time.time()
     main()
-    # new  = time.time()
-    # delta_time = new - old
-    # print("程序共运行{}s".format(delta_time))
-    print("finish.")
+    new = time.time()
+    delta_time = new - old
+    print("程序共运行{}s".format(delta_time))
