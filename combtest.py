@@ -4,32 +4,9 @@ from pyquery import PyQuery as pq
 import threading
 from concurrent.futures import ThreadPoolExecutor
 import time
-from urllib.parse import urlsplit
-from urllib.parse import urljoin
-import os
-
-# 按照搜索条件URL的Path最后一级增加pgi
-
-
-def url_addpag(detailurl, cot):
-    urlsp = urlsplit(detailurl)
-    urlsppth = [i for i in urlsp.path.split('/') if i != '']
-    i = 1
-    resulturllst = []
-    while(i <= cot):
-        sp = ''
-        for j in urlsppth:
-            if j == urlsppth[len(urlsppth)-1] and i != 1:
-                # 搜索的Path为最后一个值前面增加 pgi 页码
-                sp = os.path.join(sp, 'pg{}{}'.format(
-                    str(i), urlsppth[len(urlsppth)-1]))
-            else:
-                sp = os.path.join(sp, j)
-        resulturl = urljoin('{0}://{1}'.format(urlsp.scheme, urlsp.netloc), sp)
-        i = i+1
-        resulturllst.append(resulturl)
-    return resulturllst
-
+# import local modue
+import localdb
+from url_pag_add import url_addpag
 # 获取搜索结果
 
 
@@ -112,6 +89,8 @@ def detail_page_parser(res):
             unit_price = unit_price[0:unit_price.index("元")]
             if len(unit_price) > 0:
                 detail_dict['unit_price'] = unit_price
+                # 总价
+                detail_dict['all_price'] = doc('.price .total').text().strip()
                 # 标题
                 detail_dict["title"] = doc("h1").text()
                 # 室
@@ -122,8 +101,6 @@ def detail_page_parser(res):
                 # 年份
                 buildyear = doc('.area .subInfo').text()
                 detail_dict['buildyear'] = buildyear[0:buildyear.index('年')]
-                # 总价
-                detail_dict['all_price'] = doc('.price .total').text().strip()
                 # 小区
                 detail_dict['community'] = doc(
                     ".communityName .info").text().strip()
@@ -131,9 +108,9 @@ def detail_page_parser(res):
                 va = doc(".areaName .info a")
                 detail_dict['location'] = '\t'.join(
                     [va.eq(x).text().strip() for x in range(len(va))])
-                detail_list.append(detail_dict)
                 # URL
                 detail_dict["url"] = detail_url
+                detail_list.append(detail_dict)
         except Exception as ex:
             print("获取详情页出错,URL:{}".format(detail_url))
             print('error message:{}'.format(ex))
@@ -153,9 +130,18 @@ def main():
                     p.submit(get_detail_page_url, page_url).add_done_callback(
                         detail_page_parser)
             # 保存数据
-            save_data(detail_list, city)
+            # save_data(detail_list, 'city_{}_search_{}'.format(city, sev))
+            tablename = 'shanghai'
+            localdb.createdb(tablename)
+            localdb.insertdatatodb(detail_list, tablename)
         detail_list.clear()
-
+    
+    count = 0
+    for i in localdb.searchdata('shanghai'):
+        print(i)
+        count +=1
+        if count == 100:
+            break
 
 def save_data(data, filename):
     with open(filename+".json", 'w', encoding="utf-8") as f:
