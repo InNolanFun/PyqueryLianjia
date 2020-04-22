@@ -19,20 +19,20 @@ def createdb():
         c.execute(
             '''CREATE TABLE if not exists stocks 
             (
+            symbol text PRIMARY KEY,
             date text, 
             trans text, 
-            symbol text, 
-            qty real PRIMARY KEY, 
+            qty real , 
             price real
             )
             ''')
-
+        conn.commit()
 
 def insertdatatodb(data):
     with sqlite3.connect('example.db') as conn:
         c = conn.cursor()
         for i in data:
-            c.execute('''INSERT  OR REPLACE INTO
+            c.execute('''INSERT INTO
                 stocks(
                 date,
                 trans,
@@ -40,40 +40,43 @@ def insertdatatodb(data):
                 qty,
                 price
                 )
-            VALUES(
-                :date,
-                :trans,
-                :symbol,
-                :qty,
-                :price
-            )
-            ''', i)
+                VALUES(
+                    :date,
+                    :trans,
+                    :symbol,
+                    :qty,
+                    :price
+                )
+                ON CONFLICT(symbol) DO UPDATE SET 
+                    date="test"
+                ''', i)
+            conn.commit()
 
 
 def searchdata():
     with sqlite3.connect('example.db') as conn:
         c = conn.cursor()
-        va = c.execute('''select * from stocks order by price,qty''')
+        va = c.execute('''select symbol from stocks''')
         return va
 
 
 def main():
     createdb()
     ls = list()
-
     for i in range(10):
         da = dict()
         da['date'] = "2020-11-11"
         da['trans'] = 'test'
         da['symbol'] = 'test4'
-        da['qty'] = 'test1'
+        da['qty'] = i
         da['price'] = i+1
         ls.append(da)
-
+    for i in ls:
+        print(i)
     insertdatatodb(ls)
     for i in searchdata():
         print(i)
 
-
+    
 if __name__ == "__main__":
     main()
